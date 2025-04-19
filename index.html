@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPO Training & Evaluation Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding-bottom: 20px;
+        }
+
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: 600;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: rgba(0, 123, 255, 0.1);
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+
+        #smoothing-value {
+            display: inline-block;
+            width: 30px;
+            text-align: center;
+        }
+
+        /* Evaluation metrics styles */
+        .eval-metric {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .metric-name {
+            font-weight: 600;
+            color: #495057;
+            flex: 1;
+        }
+
+        .metric-value {
+            font-weight: bold;
+            color: #0d6efd;
+            min-width: 80px;
+            text-align: right;
+            margin-left: 15px;
+        }
+
+        .progress {
+            height: 10px;
+            margin-top: 5px;
+        }
+
+        .nav-tabs .nav-link.active {
+            font-weight: bold;
+        }
+
+        .tab-content {
+            padding: 15px 0;
+        }
+
+        .model-selector {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="mt-4 mb-4 text-center">RL Training Dashboard</h1>
+        
+        <!-- Model Selection -->
+        <div class="card model-selector">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <select class="form-select" id="model-type">
+                            <option value="ppo">PPO</option>
+                            <option value="sac">SAC</option>
+                            <option value="ddpg">DDPG</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" id="refresh-btn">
+                            <i class="fas fa-sync-alt me-2"></i>Refresh Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Tabs -->
+        <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="training-tab" data-bs-toggle="tab" data-bs-target="#training" type="button" role="tab">Training Progress</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="evaluation-tab" data-bs-toggle="tab" data-bs-target="#evaluation" type="button" role="tab">Evaluation Results</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="dashboardTabsContent">
+            <!-- Training Progress Tab -->
+            <div class="tab-pane fade show active" id="training" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-chart-line me-2"></i>Training Progress
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="chart-type">Chart Type:</label>
+                                            <select id="chart-type" class="form-select">
+                                                <option value="step">By Training Step</option>
+                                                <option value="time">By Training Time</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="smoothing">Smoothing:</label>
+                                            <input type="range" class="form-range" id="smoothing" min="0" max="20" value="5">
+                                            <span id="smoothing-value">5</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="reward-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-info-circle me-2"></i>Training Summary
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="training-stats" class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-trophy me-2"></i>Best Performances
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-hover" id="best-performances">
+                                    <thead>
+                                        <tr>
+                                            <th>Step</th>
+                                            <th>Reward</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Will be populated by JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Evaluation Results Tab -->
+            <div class="tab-pane fade" id="evaluation" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-warning text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-chart-bar me-2"></i>Evaluation Metrics
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="eval-results">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-chart-pie me-2"></i>Metrics Distribution
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="metrics-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-dark text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-table me-2"></i>Detailed Metrics
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <table class="table" id="detailed-metrics">
+                                    <thead>
+                                        <tr>
+                                            <th>Metric</th>
+                                            <th>Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Will be populated by JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Global variables
+            let rewardChart, metricsChart;
+            let currentModel = 'ppo';
+            
+            // Initialize charts
+            function initCharts() {
+                const ctx = document.getElementById('reward-chart').getContext('2d');
+                rewardChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            {
+                                label: 'Evaluation Reward',
+                                data: [],
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderWidth: 2,
+                                tension: 0.1,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Best Reward',
+                                data: [],
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 2,
+                                tension: 0.1,
+                                pointRadius: 0,
+                                borderDash: [5, 5]
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Training Step'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Reward'
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            legend: {
+                                position: 'top',
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+
+                const metricsCtx = document.getElementById('metrics-chart').getContext('2d');
+                metricsChart = new Chart(metricsCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Reward', 'AFG', 'FOR', 'ROBS', 'AGV', 'AROPS'],
+                        datasets: []
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                angleLines: {
+                                    display: true
+                                },
+                                suggestedMin: 0,
+                                suggestedMax: 1
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Initialize UI components
+            function initUI() {
+                // Smoothing slider
+                const smoothingSlider = document.getElementById('smoothing');
+                const smoothingValue = document.getElementById('smoothing-value');
+                let smoothing = parseInt(smoothingSlider.value);
+                
+                smoothingSlider.addEventListener('input', function() {
+                    smoothing = parseInt(this.value);
+                    smoothingValue.textContent = smoothing;
+                    updateChart();
+                });
+
+                // Chart type selector
+                const chartTypeSelector = document.getElementById('chart-type');
+                chartTypeSelector.addEventListener('change', function() {
+                    updateChart();
+                });
+
+                // Model selector
+                const modelSelector = document.getElementById('model-type');
+                modelSelector.addEventListener('change', function() {
+                    currentModel = this.value;
+                    loadData();
+                });
+
+                // Refresh button
+                document.getElementById('refresh-btn').addEventListener('click', function() {
+                    loadData();
+                });
+            }
+
+            // Load data from backend
+            function loadData() {
+                // Load training data
+                fetch(`/data?model=${currentModel}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            console.error(data.error);
+                            return;
+                        }
+                        
+                        window.trainingData = data;
+                        updateChart();
+                        updateTrainingStats(data);
+                        populateBestPerformances(data.best_rewards);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching training data:', error);
+                    });
+
+                // Load evaluation data
+                fetch(`/eval_data?model=${currentModel}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        updateEvalResults(data);
+                        updateMetricsChart(data);
+                        updateDetailedMetrics(data);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching eval data:', error);
+                    });
+            }
+
+            // Update training chart
+            function updateChart() {
+                const chartType = document.getElementById('chart-type').value;
+                const data = window.trainingData;
+                const smoothing = parseInt(document.getElementById('smoothing').value);
+                
+                if (!data) return;
+                
+                let xValues, xLabel;
+                let allRewardsData, bestRewardsData;
+                
+                if (chartType === 'step') {
+                    xValues = data.all_rewards.map(d => d.step);
+                    xLabel = 'Training Step';
+                    
+                    allRewardsData = data.all_rewards.map(d => ({x: d.step, y: d.reward}));
+                    bestRewardsData = data.best_rewards.map(d => ({x: d.step, y: d.reward}));
+                } else {
+                    xValues = data.all_rewards.map(d => d.timestamp);
+                    xLabel = 'Training Time';
+                    
+                    allRewardsData = data.all_rewards.map(d => ({x: d.timestamp * 1000, y: d.reward}));
+                    bestRewardsData = data.best_rewards.map(d => ({x: d.timestamp * 1000, y: d.reward}));
+                }
+                
+                // Apply smoothing if needed
+                if (smoothing > 0) {
+                    allRewardsData = applySmoothing(allRewardsData, smoothing);
+                    bestRewardsData = applySmoothing(bestRewardsData, smoothing);
+                }
+                
+                // Update chart data
+                rewardChart.data.datasets[0].data = allRewardsData;
+                rewardChart.data.datasets[1].data = bestRewardsData;
+                
+                // Update x-axis label
+                rewardChart.options.scales.x.title.text = xLabel;
+                
+                // For time-based charts, configure the time scale
+                if (chartType === 'time') {
+                    rewardChart.options.scales.x.type = 'time';
+                    rewardChart.options.scales.x.time = {
+                        tooltipFormat: 'MMM d, yyyy - HH:mm:ss',
+                        displayFormats: {
+                            millisecond: 'HH:mm:ss',
+                            second: 'HH:mm:ss',
+                            minute: 'HH:mm',
+                            hour: 'MMM d, HH:mm',
+                            day: 'MMM d',
+                            week: 'MMM d',
+                            month: 'MMM yyyy',
+                            year: 'yyyy'
+                        }
+                    };
+                } else {
+                    rewardChart.options.scales.x.type = 'linear';
+                }
+                
+                rewardChart.update();
+            }
+            
+            // Simple moving average smoothing
+            function applySmoothing(data, windowSize) {
+                if (windowSize < 1) return data;
+                
+                const smoothed = [];
+                for (let i = 0; i < data.length; i++) {
+                    const start = Math.max(0, i - windowSize);
+                    const end = i + 1;
+                    const window = data.slice(start, end);
+                    const sum = window.reduce((acc, val) => acc + val.y, 0);
+                    smoothed.push({
+                        x: data[i].x,
+                        y: sum / window.length
+                    });
+                }
+                return smoothed;
+            }
+            
+            // Update training statistics
+            function updateTrainingStats(data) {
+                if (!data.all_rewards.length) return;
+                
+                const statsContainer = document.getElementById('training-stats');
+                const rewards = data.all_rewards.map(d => d.reward);
+                const bestRewards = data.best_rewards.map(d => d.reward);
+                
+                const maxReward = Math.max(...rewards);
+                const minReward = Math.min(...rewards);
+                const avgReward = rewards.reduce((a, b) => a + b, 0) / rewards.length;
+                const finalReward = rewards[rewards.length - 1];
+                const bestReward = bestRewards[bestRewards.length - 1];
+                const totalSteps = data.all_rewards[data.all_rewards.length - 1].step;
+                
+                const startTime = new Date(data.all_rewards[0].timestamp * 1000);
+                const endTime = new Date(data.all_rewards[data.all_rewards.length - 1].timestamp * 1000);
+                const duration = (endTime - startTime) / 1000 / 60; // in minutes
+                
+                statsContainer.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="stat-value">${bestReward.toFixed(4)}</div>
+                            <div class="stat-label">Best Reward</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-value">${finalReward.toFixed(4)}</div>
+                            <div class="stat-label">Final Reward</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-value">${avgReward.toFixed(4)}</div>
+                            <div class="stat-label">Average Reward</div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="stat-value">${totalSteps.toLocaleString()}</div>
+                            <div class="stat-label">Total Steps</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-value">${rewards.length}</div>
+                            <div class="stat-label">Eval Points</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-value">${duration.toFixed(1)} min</div>
+                            <div class="stat-label">Duration</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Populate best performances table
+            function populateBestPerformances(bestRewards) {
+                const tbody = document.querySelector('#best-performances tbody');
+                tbody.innerHTML = '';
+                
+                // Sort by reward descending
+                bestRewards.sort((a, b) => b.reward - a.reward);
+                
+                // Take top 10
+                const topPerformances = bestRewards.slice(0, 10);
+                
+                topPerformances.forEach(perf => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${perf.step.toLocaleString()}</td>
+                        <td>${perf.reward.toFixed(4)}</td>
+                    `;
+                    tbody.appendChild(row);
+                    
+                    // Add click handler to zoom to this point
+                    row.addEventListener('click', () => {
+                        // Find the index of this step in all rewards
+                        const allRewards = window.trainingData.all_rewards;
+                        const index = allRewards.findIndex(r => r.step === perf.step);
+                        
+                        if (index !== -1) {
+                            // Calculate a window around this point
+                            const windowSize = 20;
+                            const start = Math.max(0, index - windowSize);
+                            const end = Math.min(allRewards.length - 1, index + windowSize);
+                            
+                            // Update chart to show this range
+                            rewardChart.options.scales.x.min = allRewards[start].step;
+                            rewardChart.options.scales.x.max = allRewards[end].step;
+                            rewardChart.update();
+                        }
+                    });
+                });
+            }
+
+            // Update evaluation results
+            function updateEvalResults(evalData) {
+                const container = document.getElementById('eval-results');
+                
+                // Calculate progress bar percentage (assuming max value is 1)
+                const getPercentage = (value) => Math.min(100, value * 100);
+                
+                container.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="eval-metric">
+                                <span class="metric-name">Average Reward (R):</span>
+                                <span class="metric-value">${evalData.eval_r.toFixed(4)}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-success" role="progressbar" 
+                                     style="width: ${getPercentage(evalData.eval_r)}%" 
+                                     aria-valuenow="${evalData.eval_r}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="1"></div>
+                            </div>
+                            
+                            <div class="eval-metric">
+                                <span class="metric-name">Average AFG:</span>
+                                <span class="metric-value">${evalData.eval_afg.toFixed(4)}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-info" role="progressbar" 
+                                     style="width: ${getPercentage(evalData.eval_afg)}%" 
+                                     aria-valuenow="${evalData.eval_afg}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="1"></div>
+                            </div>
+                            
+                            <div class="eval-metric">
+                                <span class="metric-name">Average FOR:</span>
+                                <span class="metric-value">${evalData.eval_for.toFixed(4)}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-primary" role="progressbar" 
+                                     style="width: ${getPercentage(evalData.eval_for)}%" 
+                                     aria-valuenow="${evalData.eval_for}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="1"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="eval-metric">
+                                <span class="metric-name">Average ROBS:</span>
+                                <span class="metric-value">${evalData.eval_robs.toFixed(4)}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-warning" role="progressbar" 
+                                     style="width: ${getPercentage(evalData.eval_robs)}%" 
+                                     aria-valuenow="${evalData.eval_robs}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="1"></div>
+                            </div>
+                            
+                            <div class="eval-metric">
+                                <span class="metric-name">Average AGV:</span>
+                                <span class="metric-value">${evalData.eval_agv.toFixed(4)}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-danger" role="progressbar" 
+                                     style="width: ${getPercentage(evalData.eval_agv)}%" 
+                                     aria-valuenow="${evalData.eval_agv}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="1"></div>
+                            </div>
+                            
+                            <div class="eval-metric">
+                                <span class="metric-name">Average AROPS:</span>
+                                <span class="metric-value">${evalData.eval_arops.toFixed(4)}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-dark" role="progressbar" 
+                                     style="width: ${getPercentage(evalData.eval_arops)}%" 
+                                     aria-valuenow="${evalData.eval_arops}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="1"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Evaluation performed on ${new Date().toLocaleString()} | Model: ${currentModel.toUpperCase()}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Update metrics radar chart
+            function updateMetricsChart(evalData) {
+                metricsChart.data.datasets = [{
+                    label: 'Evaluation Metrics',
+                    data: [
+                        evalData.eval_r,
+                        evalData.eval_afg,
+                        evalData.eval_for,
+                        evalData.eval_robs,
+                        evalData.eval_agv,
+                        evalData.eval_arops
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(54, 162, 235, 1)'
+                }];
+                metricsChart.update();
+            }
+
+            // Update detailed metrics table
+            function updateDetailedMetrics(evalData) {
+                const tbody = document.querySelector('#detailed-metrics tbody');
+                tbody.innerHTML = '';
+                
+                const metrics = [
+                    { name: 'Average Reward (R)', value: evalData.eval_r },
+                    { name: 'Average AFG', value: evalData.eval_afg },
+                    { name: 'Average FOR', value: evalData.eval_for },
+                    { name: 'Average ROBS', value: evalData.eval_robs },
+                    { name: 'Average AGV', value: evalData.eval_agv },
+                    { name: 'Average AROPS', value: evalData.eval_arops }
+                ];
+                
+                metrics.forEach(metric => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${metric.name}</td>
+                        <td>${metric.value.toFixed(6)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            // Initialize everything
+            initCharts();
+            initUI();
+            loadData();
+
+            // Auto-refresh every 30 seconds
+            setInterval(loadData, 30000);
+        });
+    </script>
+</body>
+</html>
