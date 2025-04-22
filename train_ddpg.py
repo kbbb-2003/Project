@@ -21,15 +21,21 @@ class EarlyStopper:
         self.min_delta = min_delta
         self.counter = 0
         self.max_reward = -np.inf
+        self.stopped = False  # Add the 'stopped' attribute
 
     def __call__(self, reward):
         if reward > self.max_reward + self.min_delta:
             self.max_reward = reward
             self.counter = 0
+            self.stopped = False  # Reset 'stopped' when there's an improvement
             return False
         else:
             self.counter += 1
-            return self.counter >= self.patience
+            if self.counter >= self.patience:
+                self.stopped = True  # Set 'stopped' to True when early stopping condition is met
+                return True
+            return False
+
 
 def main(args_env, args_ddpg, args_train, seed):
     # 初始化设置
@@ -131,12 +137,12 @@ def main(args_env, args_ddpg, args_train, seed):
                     # 记录评估指标
                     writer.add_scalar('Eval/Reward', eval_r, total_steps)
                     writer.add_scalar('Eval/Best_Reward', best_reward, total_steps)
-                    print(f"Epoch:{epoch} | Step:{total_steps} | Eval Reward:{eval_r:.4f} | Best:{best_reward:.4f}")
+                    print(f"Epoch:{epoch} | Step:{total_steps} | Eval Reward:{eval_r:.6f} | Best:{best_reward:.6f}")
                     
-                    # 早停检查
-                    if early_stopper(eval_r):
-                        print(f"Early stopping at step {total_steps} with reward {eval_r:.4f}")
+                    if early_stopper.stopped:
+                        print(f"Early stopping at step {total_steps} with reward {eval_r:.6f}")
                         break
+
             
             epoch_rewards.append(episode_reward)
             

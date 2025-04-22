@@ -72,6 +72,12 @@ class BasicEnv:
         return np.array(self.state).flatten(), self.reward, self.done
 
     def _read_in_timestep_data(self, timestep):
+         # 让 timestep 在数据集长度范围内循环
+        timestep = (timestep - 1) % len(self.dataset)  # 将 timestep 转换为合法的索引
+        
+        # 然后读取数据
+        data = list(self.dataset.iloc[timestep])
+
         self._clear()   # clear last timestep state
         list_timestep_data = list(filter(lambda x: x == x,
                                          list(self.dataset.iloc[timestep - 1])))  # list (float)

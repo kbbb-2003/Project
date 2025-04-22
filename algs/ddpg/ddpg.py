@@ -71,15 +71,23 @@ class DDPG:
         self.noise_scale = args.explore_noise
         self.noise_decay = args.noise_decay if hasattr(args, 'noise_decay') else 0.9995
         self.min_noise_scale = args.min_noise_scale if hasattr(args, 'min_noise_scale') else 0.01
-        
+
+    def save_model(self, filepath):
+        """保存DDPG模型的状态字典"""
+        torch.save({
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'actor_target_state_dict': self.actor_target.state_dict(),
+            'critic_target_state_dict': self.critic_target.state_dict(),
+            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+        }, filepath)
+        print(f"Model saved to {filepath}")
+
     def take_action(self, state, noise=True):
-        # 确保输入的state维度是正确的
         state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
-        
-        # 获取actor网络的输出
         action = self.actor(state).cpu().data.numpy().flatten()
         
-        # 如果需要噪声，就加噪声
         if noise:
             noise = np.random.normal(0, self.noise_scale, size=action.shape)
             action = (action + noise).clip(-self.max_action, self.max_action)
@@ -103,7 +111,6 @@ class DDPG:
         
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        # 添加梯度裁剪
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
         self.critic_optimizer.step()
         
@@ -112,7 +119,6 @@ class DDPG:
         
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        # 添加梯度裁剪
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
         self.actor_optimizer.step()
         
